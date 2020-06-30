@@ -22,7 +22,7 @@ public class HBaseAppTest {
     Table table = null;
     Admin admin = null;
 
-    String tableName = "hbase_api_test";
+    String tableName = "access_20190130";
 
     @Before
     public void setUp() throws Exception{
@@ -127,7 +127,7 @@ public class HBaseAppTest {
     public void testGet() throws IOException {
         table = connection.getTable(TableName.valueOf(tableName));
 
-        Get get = new Get(Bytes.toBytes("liangy"));
+        Get get = new Get(Bytes.toBytes("20190130_616144978"));
         Result result = table.get(get);
         printRes(result);
     }
