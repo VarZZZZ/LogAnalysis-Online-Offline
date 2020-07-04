@@ -1,5 +1,7 @@
 package batch
 
+import java.sql.DriverManager
+
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.client.{Result, Scan}
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable
@@ -8,16 +10,16 @@ import org.apache.hadoop.hbase.protobuf.ProtobufUtil
 import org.apache.hadoop.hbase.util.{Base64, Bytes}
 import org.apache.spark.sql.SparkSession
 
+import scala.util.{Failure, Success, Try}
+
 /**
  * @Author: ly
- * @Date: 2020/6/30 20:27
+ * @Date: 2020/7/3 19:54
  * @Version 1.0  
  *
- * 利用Spark SQL 来处理
  */
-object Analysis_v1_SQL_App {
+object AnalysisToMysql {
   def main(args: Array[String]): Unit = {
-
     val spark = SparkSession.builder().config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
       .config("spark.hadoop.validateOutputSpecs", value = false)
       .master("local[2]").appName("LogETLApp")
@@ -70,21 +72,56 @@ object Analysis_v1_SQL_App {
     //+-------+--------+---+
 
     println("---------------------------------------")
-    hbaseRDD.map(x=>{
-      val browsername = Bytes.toString(x._2.getValue("o".getBytes,"browsername".getBytes))
+    val resultRDD = hbaseRDD.map(x => {
+      val browsername = Bytes.toString(x._2.getValue("o".getBytes, "browsername".getBytes))
       //Browser(browsername)
-      browsername
-    }).toDF("browsername")
-      //.createOrReplaceTempView("browsername_tb")
-    spark.sql("select browsername,count(*) as ct from browsername_tb group by browsername order by ct desc").show()
+      (browsername, 1)
+    }).reduceByKey(_ + _)
+
+    resultRDD.collect().foreach(println)
+
+    // 如果分区数多，那么会建立过多的connection;
+    // 那减小一些比较好
+    resultRDD.coalesce(2).foreachPartition(part=>{
+      Try{
+        val connection = {
+          Class.forName("com.mysql.jdbc.Driver")
+          val url = "jdbc:mysql://master:3306/spark?characterEncoding=UTF8"
+          val user="root"
+          val password = "1234"
+          DriverManager.getConnection(url,user,password)
+        }
+        val preAutoCommit = connection.getAutoCommit
+        connection.setAutoCommit(false)
+        val sql = "insert into browser_stat(day,browser,cnt) values(?,?,?)"
+        val pstmt = connection.prepareStatement(sql)
+
+        pstmt.addBatch(s"delete * from browser_stat where day=$day") // mysql中没设置主键，也不必要设置(也可以设置主键)，数据重跑时直接删除
+
+        part.foreach(x=>{
+          pstmt.setString(1,day)
+          pstmt.setString(2,x._1)
+          pstmt.setInt(3,x._2)
+
+          pstmt.addBatch()
+        })
+        pstmt.executeBatch()
+        connection.commit()
+        (connection,preAutoCommit) // 需要再连接断开后，还原preAutoCommit
+      }match{
+        case Success((connection,preAutoCommit)) =>
+          connection.setAutoCommit(preAutoCommit)
+          if(null != connection) connection.close()
+        case Failure(exception)=> throw exception
+      }
+    })
 
 
-
-    hbaseRDD.unpersist(true)
     spark.stop()
   }
 
   case class CountryProvince(country:String,province:String)
   case class Browser(browsername:String)
+
 
 }

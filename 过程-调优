@@ -1,0 +1,61 @@
+# batch
+
+RDD通过JDBC可以写入Mysql
+DataFrame dataSet的数据通过format("jdbc")直接写入MySQL是否更好？
+
+Spark
+// 如果分区数多，那么会建立过多的connection;
+// 那减小一些比较好
+resultRDD.coalesce(2).foreachPartition(part=>{
+      Try{
+        val connection = {
+        }
+
+HBase
+WAL:Write-ahead log 预写日志
+    灾难恢复，一旦服务器崩溃，通过重放log，恢复之前的数据
+    如果写入wal失败，那么就认为操作失败
+    写操作性能降低，不开启会数据丢失；
+   折中：不写WAL，手工刷新memstore的数据落地(会产生许多小文件)
+    put.setDurability(Durability.SKIP_WAL) //禁用WAL
+    额外定义刷鞋函数，admin.flush(table)
+
+写HBase时
+df.rdd.map(x=>{
+    row =>put =>conf.set(TableOutputFormat.OUTPUT_TABLE,conf)
+}
+一个row，转换为一个put，再设置output格式
+优化：-》HFile是HBase的的底层存储格式
+    能否直接使用Spark将DF/RDD中的数据生成HFile文件，再load到HBase中呢，更高效
+    可以
+数据已经存储到hbase了，后面的统计分析的spark作业，是否能在统计分析的时候直接查询hfile文件呢
+
+写数据方法：
+    1.put
+    2.disable wal
+    3. hfile
+读数据
+    RDD
+    Spark SQL/DF/DS
+
+YARN的rm挂了，rm ha ==>一定有效吗？如何提交作业
+
+# streaming
+
+
+
+
+# Kafka
+
+// zookeeper 只需要1个就可以了
+对于消费者，kafka中有两个设置的地方：对于老的消费者，由--zookeeper参数设置；对于新的消费者，由--bootstrap-server参数设置
+如果使用了--zookeeper参数,那么consumer的信息将会存放在zk之中
+查看的方法是使用./zookeeper-client,然后 ls /consumers/[group_id]/offsets/[topic]/[broker_id-part_id],这个是查看某个group_id的某个topic的offset
+如果使用了--bootstrap-server参数,那么consumer的信息将会存放在kafka之中
+
+./kafka-topics.sh --create --zookeeper master:2181 --replication-factor 1 --partitions 1 --topic lakafka
+
+//只有生产者需要broker-list服务器--指定使用那个broker作为生产
+./kafka-console-producer.sh --broker-list master:9092 --topic lakafkatest
+
+./kafka-console-consumer.sh --zookeeper master:2181 --topic lakafkatest

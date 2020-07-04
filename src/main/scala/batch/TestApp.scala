@@ -14,11 +14,8 @@ object TestApp {
 
   def main(args: Array[String]): Unit = {
     val conf = new SparkConf()
-      .setAppName("TestApp")
-      .setMaster("local")
     val sc = new SparkContext(conf)
-    sc.setLogLevel("ERROR")
-
+    sc.addJar("/home/hadoop/module/te.jar")
 
     val rdd = sc.parallelize(List(1,2,3,4))
     rdd.collect().foreach(println)

@@ -30,19 +30,29 @@ import org.apache.spark.sql.SparkSession
  *          后续分析时，一天一个批次，HBase表(logs_yyyyMMdd)中获取
  *
  */
+import scalaj.http._;
 object LogETLApp extends Logging {
   def main(args: Array[String]): Unit = {
 
-    //    if(args.length != 1){
-    //      println("Usage:LogETLApp <time>")
-    //      System.exit(-1)
-    //    }
+//        if(args.length != 1){
+//          println("Usage:LogETLApp <time> 111")
+//          System.exit(-1)
+//        }
+//
+//    val day = args(0)
+//    val spark = SparkSession.builder()
+//      .config("spark.executor.extraClassPath","/home/hadoop/tool/spark-2.4.4/external_jars/*")
+//      .config("spark.driver.extraClassPath","/home/hadoop/tool/spark-2.4.4/external_jars/*")
+//      .getOrCreate() // 集群模式运行
 
     val day = "20190130"
+
     val spark = SparkSession.builder().config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
       .config("spark.hadoop.validateOutputSpecs", value = false)
       .master("local[2]").appName("LogETLApp")
       .getOrCreate()
+
+
 
     val input = s"hdfs://master:9000/access/$day/*"
     System.setProperty("icode", "77A5630C2BD7279E")
@@ -102,6 +112,7 @@ object LogETLApp extends Logging {
         for ((k, v) <- columns) {
           put.addColumn(Bytes.toBytes("o"), Bytes.toBytes(k.toString), Bytes.toBytes(v.toString))
         }
+        put.setDurability(Durability.SKIP_WAL) //禁用WAL
 
         (new ImmutableBytesWritable(rowKey.getBytes), put)
       }
@@ -122,8 +133,30 @@ object LogETLApp extends Logging {
       classOf[TableOutputFormat[ImmutableBytesWritable]],
       conf
     )
+
+    flushTable(tableName,conf) // 刷写数据
+
     logInfo(s"作业执行成功...$day")
     spark.stop()
+  }
+  def flushTable(table:String,conf:Configuration):Unit={
+    var connection: Connection = null
+    var admin: Admin = null
+    try {
+      connection = ConnectionFactory.createConnection(conf)
+      admin = connection.getAdmin
+
+      admin.flush(TableName.valueOf(table)) // memstore==>store
+    } catch {
+      case e: Exception => e.printStackTrace()
+    } finally {
+      if (null != admin) {
+        admin.close()
+      }
+      if (null != connection) {
+        connection.close()
+      }
+    }
   }
 
 
